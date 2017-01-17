@@ -39,3 +39,60 @@ func OpenDatabase(config *DatabaseConfig) (*sqlx.DB, error) {
 
 	return database, nil
 }
+
+// GetExportMarker returns the export marker record for the given bucket and tableName. It will return an error if the record does not exist. Before the first import you must insert the record into the import_markers table.
+func GetExportMarker(db *sqlx.DB, bucket, tableName string) (*ExportMarker, error) {
+	var marker ExportMarker
+
+	q := `
+SELECT bucket, table_name, year, month, hour, day 
+FROM   import_markers 
+WHERE  bucket=$1
+AND    table_name=$2
+`
+	if err := db.Get(&marker, q, bucket, tableName); err != nil {
+		return nil, errors.Wrapf(err, "getExportMarker failed to Get for bucket %+q and tableName %+q", bucket, tableName)
+	}
+
+	return &marker, nil
+}
+
+// ImportFile will load Redshift table from the file in the S3 bucket. The file is identified by the marker.
+func ImportFile(db *sqlx.DB, config *S3Config, marker *ExportMarker) error {
+	q := fmt.Sprintf(`
+COPY %s
+FROM 's3://%s/%s'
+WITH CREDENTIALS 'aws_iam_role=%s'
+REGION '%s'
+IGNOREHEADER 1
+NULL AS 'NULL'
+`,
+		marker.TableName,
+		marker.Bucket,
+		marker.FullPath(),
+		config.Arn,
+		config.Region,
+	)
+
+	if _, err := db.Exec(q); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UpdateExportMarker updates the marker record in import_markers table.
+func UpdateExportMarker(db *sqlx.DB, marker *ExportMarker) error {
+	q := `
+UPDATE import_markers
+SET    year = :year, month = :month, day = :day, hour = :hour
+WHERE  bucket = :bucket
+AND    table_name = :table_name
+	`
+
+	if _, err := db.NamedExec(q, marker); err != nil {
+		return err
+	}
+
+	return nil
+}
