@@ -57,6 +57,22 @@ AND    table_name=$2
 	return &marker, nil
 }
 
+// DeleteRecordsForMarker will delete database records before import to avoid duplicate values
+func DeleteRecordsForMarker(db *sqlx.DB, marker *ExportMarker, timeColumn string) error {
+	q := fmt.Sprintf("DELETE FROM %s WHERE %s >= $1 AND %s <= $2",
+		marker.TableName,
+		timeColumn,
+		timeColumn,
+	)
+
+	timeRange := NewTimeRange(marker.Time())
+	if _, err := db.Exec(q, timeRange.From, timeRange.To); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // ImportFile will load Redshift table from the file in the S3 bucket. The file is identified by the marker.
 func ImportFile(db *sqlx.DB, config *S3Config, marker *ExportMarker) error {
 	q := fmt.Sprintf(`
