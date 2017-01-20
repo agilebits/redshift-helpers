@@ -82,6 +82,7 @@ WITH CREDENTIALS 'aws_iam_role=%s'
 REGION '%s'
 IGNOREHEADER 1
 NULL AS 'NULL'
+ESCAPE
 `,
 		marker.TableName,
 		marker.Bucket,
